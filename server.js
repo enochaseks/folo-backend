@@ -11,36 +11,37 @@ const crypto = require("crypto");
 dotenv.config();
 const app = express();
 
+// Force HTTPS in production
+app.use((req, res, next) => {
+  if (req.headers['x-forwarded-proto'] !== 'https' && process.env.NODE_ENV === 'production') {
+    return res.redirect('https://' + req.headers.host + req.url);
+  }
+  next();
+});
+
 // Middleware
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production'
-    ? [
-        'https://foloapp.co.uk',
-        'https://www.foloapp.co.uk'
-      ]
-    : 'http://localhost:3000',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+  origin: [
+    'https://folo-frontend.onrender.com', // Your frontend
+    'http://localhost:3000'               // Local dev
+  ],
+  credentials: true
 };
 
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "50mb" }));
 
 // Database Configuration
-const sequelize = new Sequelize({
-  database: process.env.DB_NAME || "folo-app",
-  username: process.env.DB_USER || "postgres",
-  password: process.env.DB_PASSWORD || "Horsedancing123",
-  host: process.env.DB_HOST || "localhost",
-  dialect: "postgres",
-  port: process.env.DB_PORT || 5432,
-  pool: { 
-    max: 10,
-    min: 0,
-    acquire: 30000,
-    idle: 10000
+const sequelize = new Sequelize(process.env.DATABASE_URL, {
+  dialect: 'postgres',
+  protocol: 'postgres',
+  dialectOptions: {
+    ssl: {
+      require: true,
+      rejectUnauthorized: false
+    }
   }
-});
+})
 
 // Test Database Connection
 sequelize.authenticate()
@@ -915,6 +916,17 @@ app.use((err, req, res, next) => {
     message: 'Something broke!',
     error: process.env.NODE_ENV === 'production' ? undefined : err.message
   });
+});
+
+app.get('/', (req, res) => {
+  res.json({ 
+    status: 'API is running', 
+    docs: 'Use /api/ endpoints' 
+  });
+});
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'Healthy' });
 });
 
 // Start Server

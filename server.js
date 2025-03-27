@@ -45,18 +45,54 @@ app.get('*', (req, res) => {
 });
 
 // Middleware
-app.use(cors({
+const corsOptions = {
   origin: [
     'https://folo-frontend.onrender.com',
-    'http://localhost:3000',
-    'https://foloapp.co.uk'
+    'http://localhost:3000'
   ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
-}));
+};
 
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "50mb" }));
+
+// Password verification endpoint (temporary for debugging)
+app.post('/api/verify-password', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password required" });
+    }
+
+    const user = await User.findOne({ 
+      where: { email },
+      attributes: ['id', 'email', 'password', 'isVerified']
+    });
+
+    if (!user) {
+      return res.json({ 
+        exists: false,
+        message: "User not found" 
+      });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    
+    res.json({
+      exists: true,
+      isVerified: user.isVerified,
+      passwordMatch: isMatch,
+      email: user.email
+    });
+
+  } catch (err) {
+    console.error('Password verification error:', err);
+    res.status(500).json({ error: "Server error during verification" });
+  }
+});
 
 // Database Configuration
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
@@ -192,40 +228,75 @@ const authenticate = async (req, res, next) => {
   }
 };
 
+
+
 // Signup Route
 app.post("/api/signup", async (req, res) => {
   try {
+    console.log('Signup request received:', req.body);
     const { name, email, password, role } = req.body;
 
+    // Validate input
     if (!name || !email || !password || !role) {
-      return res.status(400).json({ message: "All fields are required" });
+      console.log('Missing required fields');
+      return res.status(400).json({ 
+        success: false,
+        message: "All fields are required"
+      });
     }
 
+    console.log('Checking for existing user...');
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
-      return res.status(400).json({ message: "User already exists" });
+      console.log('User already exists:', email);
+      return res.status(400).json({ 
+        success: false,
+        message: "User already exists"
+      });
     }
 
+    console.log('Hashing password...');
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
+    console.log('Password hashed successfully');
 
+    console.log('Creating user...');
     const user = await User.create({
       name,
       email,
       password: hashedPassword,
       role,
+      isVerified: false
     });
+    console.log('User created with ID:', user.id);
 
-    const verificationToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: "1h" });
-    user.verificationToken = verificationToken;
-    await user.save();
+    console.log('Generating verification token...');
+    const verificationToken = jwt.sign(
+      { userId: user.id },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+    await user.update({ verificationToken });
+    console.log('Verification token saved');
 
     res.status(201).json({
-      message: "Signup successful! Please check your email to verify your account.",
+      success: true,
+      message: "Signup successful! Please check your email to verify your account."
     });
+
   } catch (err) {
-    console.error("Error in /api/signup:", err);
-    res.status(500).json({ message: "Internal Server Error", error: err.message });
+    console.error("FULL SIGNUP ERROR:", {
+      message: err.message,
+      stack: err.stack,
+      name: err.name,
+      ...(err.errors && { errors: err.errors.map(e => e.message) })
+    });
+    
+    res.status(500).json({ 
+      success: false,
+      message: "Registration failed",
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 });
 
@@ -326,6 +397,31 @@ app.get("/api/confirm-email", async (req, res) => {
   } catch (error) {
     console.error("Email verification failed:", error);
     res.status(400).json({ message: "Invalid or expired token." });
+  }
+});
+
+// In your server.js
+app.post('/api/force-password-reset', async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+    const user = await User.findOne({ where: { email } });
+    
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Generate proper bcrypt hash
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    await user.save();
+
+    res.json({ 
+      success: true,
+      message: "Password reset successfully" 
+    });
+  } catch (err) {
+    console.error('Password reset error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -3,15 +3,13 @@ const cors = require("cors");
 const { Sequelize, DataTypes } = require("sequelize");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const nodemailer = require("nodemailer");
 const dotenv = require("dotenv");
-const { body, validationResult } = require("express-validator");
-const crypto = require("crypto");
+const path = require('path');
 
 dotenv.config();
 const app = express();
 
-// Force HTTPS in production
+// Redirect HTTP to HTTPS in production
 app.use((req, res, next) => {
   if (req.headers['x-forwarded-proto'] !== 'https' && process.env.NODE_ENV === 'production') {
     return res.redirect('https://' + req.headers.host + req.url);
@@ -19,11 +17,13 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use(express.static(path.join(__dirname, 'build')));
+
 // Middleware
 const corsOptions = {
   origin: [
-    'https://folo-frontend.onrender.com', // Your frontend
-    'http://localhost:3000'               // Local dev
+    'https://folo-frontend.onrender.com',
+    'http://localhost:3000'
   ],
   credentials: true
 };
@@ -41,7 +41,7 @@ const sequelize = new Sequelize(process.env.DATABASE_URL, {
       rejectUnauthorized: false
     }
   }
-})
+});
 
 // Test Database Connection
 sequelize.authenticate()
@@ -49,15 +49,59 @@ sequelize.authenticate()
   .catch(err => console.error('Unable to connect to database:', err));
 
 // Model Definitions
-const User = require("./models/User")(sequelize, DataTypes);
-const Service = require("./models/Service")(sequelize, DataTypes);
-const Review = require("./models/Review")(sequelize, DataTypes);
-const Subscriber = require("./models/Subscriber")(sequelize, DataTypes);
+const User = sequelize.define('User', {
+  name: { type: DataTypes.STRING, allowNull: false },
+  email: { type: DataTypes.STRING, allowNull: false, unique: true },
+  password: { type: DataTypes.STRING, allowNull: false },
+  role: { type: DataTypes.STRING, allowNull: false },
+  isVerified: { type: DataTypes.BOOLEAN, defaultValue: false },
+  verificationToken: { type: DataTypes.STRING },
+  deletionScheduled: { type: DataTypes.BOOLEAN, defaultValue: false },
+  deletionDate: { type: DataTypes.DATE }
+});
+
+const Service = sequelize.define('Service', {
+  category: { type: DataTypes.STRING, allowNull: false },
+  businessName: { type: DataTypes.STRING, allowNull: false },
+  location: { type: DataTypes.JSONB, allowNull: false },
+  phone: { type: DataTypes.STRING, allowNull: false },
+  email: { type: DataTypes.STRING, allowNull: false },
+  items: { type: DataTypes.ARRAY(DataTypes.STRING) },
+  photos: { type: DataTypes.ARRAY(DataTypes.STRING) },
+  businessType: { type: DataTypes.STRING },
+  businessOrigin: { type: DataTypes.STRING },
+  address: { type: DataTypes.STRING },
+  country: { type: DataTypes.STRING },
+  postCode: { type: DataTypes.STRING },
+  currency: { type: DataTypes.STRING },
+  deliveryOption: { type: DataTypes.BOOLEAN },
+  ownVehicle: { type: DataTypes.BOOLEAN },
+  deliveryFee: { type: DataTypes.DECIMAL(10, 2) },
+  remoteOperation: { type: DataTypes.BOOLEAN },
+  runOnSocialMedia: { type: DataTypes.BOOLEAN },
+  socialMedia: { type: DataTypes.JSONB },
+  documentation: { type: DataTypes.ARRAY(DataTypes.STRING) },
+  willSellAlcohol: { type: DataTypes.BOOLEAN },
+  services: { type: DataTypes.ARRAY(DataTypes.STRING) },
+  thumbnail: { type: DataTypes.STRING }
+});
+
+const Review = sequelize.define('Review', {
+  businessName: { type: DataTypes.STRING, allowNull: false },
+  businessType: { type: DataTypes.STRING, allowNull: false },
+  rating: { type: DataTypes.INTEGER, allowNull: false },
+  customerService: { type: DataTypes.INTEGER, allowNull: false },
+  timeManagement: { type: DataTypes.INTEGER, allowNull: false },
+  price: { type: DataTypes.INTEGER, allowNull: false },
+  experience: { type: DataTypes.TEXT, allowNull: false },
+  description: { type: DataTypes.TEXT, allowNull: false },
+  pros: { type: DataTypes.TEXT, allowNull: false },
+  cons: { type: DataTypes.TEXT, allowNull: false }
+});
 
 // Model Relationships
 User.hasMany(Service, { foreignKey: "userId" });
 Service.belongsTo(User, { foreignKey: "userId" });
-
 User.hasMany(Review, { foreignKey: "userId" });
 Review.belongsTo(User, { foreignKey: "userId" });
 
@@ -106,174 +150,6 @@ const authenticate = (req, res, next) => {
   }
 };
 
-// Email Configuration
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || "smtp-relay.brevo.com",
-  port: process.env.EMAIL_PORT || 587,
-  secure: false,
-  auth: {
-    user: process.env.EMAIL_USER || "88d3b8002@smtp-brevo.com",
-    pass: process.env.EMAIL_PASS || "B6TL5UZ7mdtSHG4h"
-  },
-  tls: {
-    rejectUnauthorized: process.env.NODE_ENV !== "production"
-  }
-});
-
-// Email Template Builders
-const buildConfirmationEmail = (link) => `
-  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-    <h1 style="color: #ff6f61;">Welcome to Folo!</h1>
-    <p>Thank you for subscribing to our newsletter.</p>
-    <p>Please confirm your email by clicking below:</p>
-    <a href="${link}" 
-       style="background: #ff6f61; color: white; padding: 12px 24px; 
-              display: inline-block; border-radius: 5px; text-decoration: none;">
-      Confirm Email
-    </a>
-    <p style="margin-top: 20px; color: #666;">
-      If you didn't request this, please ignore this email.
-    </p>
-  </div>
-`;
-
-const buildWelcomeEmail = () => `
-  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-    <h1 style="color: #ff6f61;">You're Confirmed!</h1>
-    <p>Thank you for joining Folo's community.</p>
-    <p>You'll now receive:</p>
-    <ul>
-      <li>Exclusive early access</li>
-      <li>Special member discounts</li>
-      <li>Updates on Black-owned businesses</li>
-    </ul>
-    <p>We're excited to have you with us!</p>
-  </div>
-`;
-
-// Newsletter Subscription Endpoint
-app.post("/api/newsletter/subscribe", [
-  body("email").isEmail().withMessage("Must be a valid email").normalizeEmail(),
-  body("name").optional().trim().escape()
-], async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    console.log("[VALIDATION ERROR]", errors.array());
-    return res.status(400).json({ 
-      success: false,
-      errors: errors.array() 
-    });
-  }
-
-  const { email, name } = req.body;
-  console.log("[SUBSCRIBE] New request for:", email);
-
-  try {
-    const existing = await Subscriber.findOne({ where: { email } });
-    if (existing) {
-      console.log("[DUPLICATE] Already exists:", email);
-      return res.status(409).json({ 
-        success: false,
-        message: "This email is already subscribed"
-      });
-    }
-
-    const confirmationToken = crypto.randomBytes(32).toString('hex');
-    const confirmationLink = `${process.env.FRONTEND_URL}/confirm-subscription?token=${confirmationToken}`;
-    
-    const subscriber = await Subscriber.create({ 
-      email, 
-      name: name || null,
-      confirmed: false,
-      confirmationToken
-    });
-    
-    console.log("[NEW SUBSCRIBER] Created ID:", subscriber.id);
-
-    try {
-      const mailResult = await transporter.sendMail({
-        from: `"Folo Team" <${process.env.EMAIL_FROM}>`,
-        to: email,
-        subject: "Confirm Your Subscription",
-        html: buildConfirmationEmail(confirmationLink),
-        text: `Please confirm your subscription by visiting: ${confirmationLink}`,
-        headers: {
-          'X-Mailin-custom': 'folo-newsletter'
-        }
-      });
-
-      console.log("[EMAIL SENT] Message ID:", mailResult.messageId);
-      console.log("[EMAIL RESPONSE]", mailResult.response);
-
-      return res.status(200).json({ 
-        success: true,
-        message: "Subscription successful. Please check your email.",
-        data: {
-          email: subscriber.email,
-          id: subscriber.id
-        }
-      });
-    } catch (emailError) {
-      console.error("[EMAIL ERROR]", emailError);
-      // Delete the subscriber if email failed
-      await subscriber.destroy();
-      throw new Error("Failed to send confirmation email");
-    }
-
-  } catch (error) {
-    console.error("[FATAL ERROR]", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
-    });
-  }
-});
-
-// In your server.js
-app.post('/api/newsletter/confirm', async (req, res) => {
-  const { token } = req.body;
-  
-  if (!token) {
-    return res.status(400).json({
-      success: false,
-      message: 'Verification token is required'
-    });
-  }
-
-  try {
-    const subscriber = await Subscriber.findOne({ where: { confirmationToken: token } });
-    
-    if (!subscriber) {
-      return res.status(404).json({
-        success: false,
-        message: 'Invalid verification token'
-      });
-    }
-
-    if (subscriber.confirmed) {
-      return res.status(200).json({
-        success: true,
-        message: 'Email already confirmed'
-      });
-    }
-
-    await subscriber.update({ confirmed: true, confirmationToken: null });
-    
-    return res.status(200).json({
-      success: true,
-      message: 'Email successfully confirmed'
-    });
-    
-  } catch (error) {
-    console.error('Confirmation error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error during confirmation'
-    });
-  }
-});
-
 // Signup Route
 app.post("/api/signup", async (req, res) => {
   try {
@@ -301,19 +177,6 @@ app.post("/api/signup", async (req, res) => {
     const verificationToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: "1h" });
     user.verificationToken = verificationToken;
     await user.save();
-
-    const verificationLink = `http://localhost:5000/api/confirm-email?token=${verificationToken}`;
-
-    const mailOptions = {
-      from: '"Folo App" <no-reply@foloapp.co.uk>',
-      to: email,
-      subject: "Verify Your Email",
-      text: `Click the link to verify your email: ${verificationLink}`,
-      html: `<p>Click the link to verify your email: <a href="${verificationLink}">Verify Email</a></p>`,
-    };
-
-    await transporter.sendMail(mailOptions);
-    console.log("Verification email sent successfully.");
 
     res.status(201).json({
       message: "Signup successful! Please check your email to verify your account.",
@@ -399,6 +262,10 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'build', 'index.html'));
+});
+
 // Email Verification Route
 app.get("/api/confirm-email", async (req, res) => {
   try {
@@ -436,19 +303,6 @@ app.post("/api/account/delete", async (req, res) => {
         where: { id: userId },
       }
     );
-
-    const user = await User.findByPk(userId);
-    const mailOptions = {
-      from: "your@email.com",
-      to: user.email,
-      subject: "Account Deletion Scheduled",
-      html: `
-        <p>Your account has been scheduled for deletion.</p>
-        <p>You have 14 days to recover your account by logging in before it is permanently deleted.</p>
-      `,
-    };
-
-    await transporter.sendMail(mailOptions);
 
     res.status(200).json({ message: "Account deletion scheduled" });
   } catch (error) {
@@ -707,27 +561,10 @@ app.post("/api/reviews", async (req, res) => {
       userId,
     } = req.body;
 
-    console.log("Request Body:", req.body);
-    console.log("User ID:", userId);
-
-    if (
-      !businessName ||
-      !businessType ||
-      !rating ||
-      !customerService ||
-      !timeManagement ||
-      !price ||
-      !experience ||
-      !description ||
-      !pros ||
-      !cons ||
-      !userId
-    ) {
+    if (!businessName || !businessType || !rating || !customerService || 
+        !timeManagement || !price || !experience || !description || 
+        !pros || !cons || !userId) {
       return res.status(400).json({ message: "All fields are required" });
-    }
-
-    if (!userId || isNaN(userId)) {
-      return res.status(400).json({ message: "Invalid user ID" });
     }
 
     const review = await Review.create({
@@ -818,16 +655,8 @@ app.put("/api/reviews/:id", async (req, res) => {
       cons,
     } = req.body;
 
-    console.log("Review ID:", id);
-    console.log("Request Body:", req.body);
-
     if (!id || isNaN(id)) {
       return res.status(400).json({ message: "Invalid review ID" });
-    }
-
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ message: "Validation failed", errors: errors.array() });
     }
 
     const review = await Review.findByPk(id);
@@ -913,7 +742,7 @@ app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ 
     success: false,
-    message: 'Something broke!',
+    message: 'Internal Server Error',
     error: process.env.NODE_ENV === 'production' ? undefined : err.message
   });
 });

@@ -5,6 +5,11 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const dotenv = require("dotenv");
 const path = require('path');
+const brevo = require('@getbrevo/brevo');
+const brevoApiInstance = new brevo.TransactionalEmailsApi();
+
+
+brevoApiInstance.apiKey = process.env.BREVO_API_KEY;
 
 dotenv.config();
 const app = express();
@@ -274,10 +279,43 @@ app.post("/api/signup", async (req, res) => {
     const verificationToken = jwt.sign(
       { userId: user.id },
       process.env.JWT_SECRET,
-      { expiresIn: '1h' }
+      { expiresIn: '24h' } // Increased expiry time
     );
     await user.update({ verificationToken });
     console.log('Verification token saved');
+
+    console.log('Sending verification email via Brevo...');
+    const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
+    
+    // Brevo email sending
+    await brevoApiInstance.sendTransacEmail({
+      sender: { 
+        email: process.env.BREVO_SENDER_EMAIL || 'no-reply@foloapp.co.uk', 
+        name: process.env.BREVO_SENDER_NAME || 'Folo Team' 
+      },
+      to: [{ email }],
+      subject: 'Verify Your Folo Account',
+      htmlContent: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #2563eb;">Welcome to Folo!</h2>
+          <p>Please verify your email address to complete your registration:</p>
+          <a href="${verificationUrl}" 
+             style="display: inline-block; padding: 10px 20px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 5px; margin: 15px 0;">
+            Verify Email
+          </a>
+          <p>Or copy this link to your browser:</p>
+          <p style="word-break: break-all;">${verificationUrl}</p>
+          <p>This link will expire in 24 hours.</p>
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+          <p>If you didn't request this, please ignore this email.</p>
+        </div>
+      `,
+      params: {
+        verification_url: verificationUrl,
+        user_name: name
+      }
+    });
+    console.log('Verification email sent via Brevo');
 
     res.status(201).json({
       success: true,
@@ -381,7 +419,6 @@ app.post("/api/login", async (req, res) => {
 app.get("/api/confirm-email", async (req, res) => {
   try {
     const { token } = req.query;
-
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     const user = await User.findByPk(decoded.userId);

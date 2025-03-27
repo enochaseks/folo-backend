@@ -151,7 +151,7 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 // Authentication Middleware
-const authenticate = (req, res, next) => {
+const authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   
   if (!authHeader) {
@@ -162,6 +162,21 @@ const authenticate = (req, res, next) => {
   
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    // Fetch user to check token version
+    const user = await User.findByPk(decoded.userId);
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+
+    // Check token version matches
+    if (decoded.version !== user.tokenVersion) {
+      return res.status(401).json({ 
+        message: "Session expired. Please login again.",
+        code: "TOKEN_REVOKED" 
+      });
+    }
+
     req.userId = decoded.userId;
     next();
   } catch (err) {
@@ -746,7 +761,6 @@ app.post('/api/refresh-token', async (req, res) => {
   }
 
   try {
-    // Verify using REFRESH_TOKEN_SECRET specifically
     const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
     
     const user = await User.findByPk(decoded.userId);
@@ -754,15 +768,23 @@ app.post('/api/refresh-token', async (req, res) => {
       return res.status(401).json({ success: false, message: "User not found" });
     }
 
-    // Generate new tokens
+    // Verify refresh token version matches
+    if (decoded.version !== user.tokenVersion) {
+      return res.status(401).json({ 
+        success: false,
+        message: "Refresh token invalidated" 
+      });
+    }
+
+    // Generate new tokens with current version
     const newToken = jwt.sign(
-      { userId: user.id },
+      { userId: user.id, version: user.tokenVersion },
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
 
     const newRefreshToken = jwt.sign(
-      { userId: user.id },
+      { userId: user.id, version: user.tokenVersion },
       process.env.REFRESH_TOKEN_SECRET,
       { expiresIn: '7d' }
     );
@@ -787,6 +809,29 @@ app.post('/api/refresh-token', async (req, res) => {
     }
     
     return res.status(401).json({ success: false, message: "Invalid refresh token" });
+  }
+});
+
+app.post('/api/invalidate-tokens', authenticate, async (req, res) => {
+  try {
+    const user = await User.findByPk(req.userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // Increment token version to invalidate all existing tokens
+    await user.update({ tokenVersion: user.tokenVersion + 1 });
+
+    res.json({ 
+      success: true,
+      message: "All sessions invalidated. Please login again."
+    });
+  } catch (err) {
+    console.error("Error invalidating tokens:", err);
+    res.status(500).json({ 
+      success: false,
+      message: "Error invalidating sessions" 
+    });
   }
 });
 

@@ -17,6 +17,9 @@ app.use((req, res, next) => {
   next();
 });
 
+const frontendPath = path.join(__dirname, '../folo-app/build');
+app.use(express.static(frontendPath));
+
 app.use(express.static(path.join(__dirname, '../folo-app/build')));
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../folo-app/build', 'index.html'));

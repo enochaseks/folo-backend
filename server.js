@@ -5,11 +5,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const dotenv = require("dotenv");
 const path = require('path');
-const brevo = require('@getbrevo/brevo');
-const brevoApiInstance = new brevo.TransactionalEmailsApi();
 
-
-brevoApiInstance.apiKey = process.env.BREVO_API_KEY;
 
 dotenv.config();
 const app = express();

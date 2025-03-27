@@ -722,22 +722,52 @@ app.delete("/api/reviews/:id", async (req, res) => {
 app.post('/api/refresh-token', async (req, res) => {
   const { refreshToken } = req.body;
   
+  if (!refreshToken) {
+    return res.status(400).json({ success: false, message: "Refresh token required" });
+  }
+
   try {
+    // Verify using REFRESH_TOKEN_SECRET specifically
     const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
-    const user = await User.findByPk(decoded.userId);
     
+    const user = await User.findByPk(decoded.userId);
     if (!user) {
-      return res.status(401).json({ message: "Invalid user" });
+      return res.status(401).json({ success: false, message: "User not found" });
+    }
+
+    // Generate new tokens
+    const newToken = jwt.sign(
+      { userId: user.id },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    const newRefreshToken = jwt.sign(
+      { userId: user.id },
+      process.env.REFRESH_TOKEN_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({ 
+      success: true,
+      token: newToken,
+      refreshToken: newRefreshToken,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
+
+  } catch (err) {
+    console.error("Refresh token error:", err);
+    
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ success: false, message: "Refresh token expired" });
     }
     
-    const newToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
-      expiresIn: '1h'
-    });
-    
-    res.json({ token: newToken });
-    
-  } catch (err) {
-    res.status(401).json({ message: "Invalid refresh token" });
+    return res.status(401).json({ success: false, message: "Invalid refresh token" });
   }
 });
 

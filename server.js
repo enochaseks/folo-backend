@@ -5,6 +5,8 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const dotenv = require("dotenv");
 const path = require('path');
+const authRoutes = require('./routes/authRoutes');
+
 
 
 dotenv.config();
@@ -58,6 +60,7 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "50mb" }));
+app.use('/api/auth', authRoutes);
 
 // Password verification endpoint (temporary for debugging)
 app.post('/api/verify-password', async (req, res) => {

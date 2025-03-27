@@ -45,13 +45,15 @@ app.get('*', (req, res) => {
 });
 
 // Middleware
-const corsOptions = {
+app.use(cors({
   origin: [
     'https://folo-frontend.onrender.com',
-    'http://localhost:3000'
+    'http://localhost:3000',
+    'https://foloapp.co.uk'
   ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
-};
+}));
 
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "50mb" }));

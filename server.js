@@ -17,6 +17,25 @@ app.use((req, res, next) => {
   next();
 });
 
+// Add this middleware before your routes
+app.use((req, res, next) => {
+  if (req.path !== '/api/login' && req.path !== '/api/signup') {
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+      const token = authHeader.split(' ')[1];
+      try {
+        jwt.verify(token, process.env.JWT_SECRET);
+      } catch (err) {
+        return res.status(401).json({ 
+          message: "Session expired. Please login again.",
+          code: "TOKEN_REVOKED" 
+        });
+      }
+    }
+  }
+  next();
+});
+
 const frontendPath = path.join(__dirname, '../folo-app/build');
 app.use(express.static(frontendPath));
 
@@ -233,15 +252,15 @@ app.post("/api/login", async (req, res) => {
     }
 
     const token = jwt.sign(
-      { userId: user.id }, 
-      process.env.JWT_SECRET, 
-      { expiresIn: "1h" }
+      { userId: user.id, version: 2 }, // Added version
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
     );
     
     const refreshToken = jwt.sign(
-      { userId: user.id }, 
-      process.env.REFRESH_TOKEN_SECRET, 
-      { expiresIn: "7d" }
+      { userId: user.id, version: 2 }, // Added version
+      process.env.REFRESH_TOKEN_SECRET,
+      { expiresIn: '7d' }
     );
 
     const userResponse = {

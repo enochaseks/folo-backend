@@ -17,7 +17,10 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.static(path.join(__dirname, 'build')));
+app.use(express.static(path.join(__dirname, '../folo-app/build')));
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../folo-app/build', 'index.html'));
+});
 
 // Middleware
 const corsOptions = {
@@ -262,9 +265,7 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'build', 'index.html'));
-});
+
 
 // Email Verification Route
 app.get("/api/confirm-email", async (req, res) => {

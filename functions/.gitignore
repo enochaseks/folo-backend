@@ -1,0 +1,66 @@
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Firebase cache
+.firebase/
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Environment variables
+.env
+.env.*
+.env.local
+.env.development
+.env.test
+.env.production
+.env.example
+.env.production.local
+
+# Service account keys
+serviceAccountKey.json
+*-service-account-key.json
+*-firebase-adminsdk-*.json
+
+# Local config
+.firebaserc
+firebase-key.json
+
+# Dependencies
+node_modules/
+
+# Build directory
+lib/
+build/
+dist/
+
+# Coverage directory
+coverage/
+
+# IDE and editor folders
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Exclude compiled files and node_modules
+*.js
+!src/**/*.js
+!index.js
+!package.json
+!package-lock.json
+!tsconfig.json
+!tslint.json
+!README.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+
